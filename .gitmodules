@@ -1,0 +1,3 @@
+[submodule "submodules/Mask2Former"]
+	path = submodules/Mask2Former
+	url = https://github.com/facebookresearch/Mask2Former.git

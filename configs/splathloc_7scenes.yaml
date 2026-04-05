@@ -1,0 +1,22 @@
+init:
+  topk: 50
+  interval: 5
+  iniler_threshold_1: 150
+  iniler_threshold_2: 150
+  num_perturbed: 150
+  rot_deg: 5
+  trans: 0.5
+
+dense:
+  iters: 4
+  coarse_dual_softmax_temp: 0.1
+  fine_dual_softmax_temp: 0.1
+  coarse_threshold: 0
+  fine_threshold: 0
+  solver: poselib
+  confidence: 0.99999
+  reprojection_error: 8.0
+  max_iterations: 1000
+  min_iterations: 100
+
+coarse_resolution: [60, 80]
