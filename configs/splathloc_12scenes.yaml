@@ -1,4 +1,4 @@
-init:
+initial:
   topk: 50
   interval: 5
   iniler_threshold_1: 150
@@ -7,7 +7,7 @@ init:
   rot_deg: 5
   trans: 0.5
 
-dense:
+refined:
   iters: 4
   coarse_dual_softmax_temp: 0.1
   fine_dual_softmax_temp: 0.1

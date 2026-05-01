@@ -165,7 +165,7 @@ class SplatHLoc:
         t1 = time.time()
         get_feature_time = t1 - t0
 
-        # Init loc
+        # Initial loc
         t2 = time.time()
 
         Hc, Wc = query_coarse_feature_map.shape[-2:]
@@ -182,43 +182,43 @@ class SplatHLoc:
             ).squeeze(0)
 
         images = [query_image]
-        init_result = self.init_loc(query_coarse_feature_map, images, fovx, fovy)
-        sparse_pose = init_result["pose_w2c"]
+        init_result = self.initial_loc(query_coarse_feature_map, images, fovx, fovy)
+        initial_pose = init_result["pose_w2c"]
         self.inlier_count = init_result["inliers"]
 
         t3 = time.time()
         init_loc_time = t3 - t2
 
-        # refine loc
+        # refined loc
         t4 = time.time()
 
-        pose_w2c = sparse_pose
-        dense_results = []
-        for iter in range(self.config["dense"]["iters"]):
-            dense_result = self.loc_dense(
+        pose_w2c = initial_pose
+        refined_results = []
+        for iter in range(self.config["refined"]["iters"]):
+            refined_result = self.refined_loc(
                 query_image, query_coarse_feature_map, pose_w2c, fovx, fovy
             )
-            pose_w2c = dense_result["pose_w2c"]
-            self.inlier_count = dense_result["inliers"]
+            pose_w2c = refined_result["pose_w2c"]
+            self.inlier_count = refined_result["inliers"]
             
-            dense_results.append(dense_result)
+            refined_results.append(refined_result)
         
         t5 = time.time()
         refine_loc_time = t5 - t4
 
         total_time = get_feature_time + init_loc_time + refine_loc_time
 
-        return {"sparse": init_result, 
-                "dense": dense_results,
+        return {"initial": init_result, 
+                "refined": refined_results,
                 "timing": {
                     "get_feature": get_feature_time,
-                    "init_loc": init_loc_time,
-                    "refine_loc": refine_loc_time,
+                    "initial_loc": init_loc_time,
+                    "refined_loc": refine_loc_time,
                     "total": total_time
                 }}
 
     @torch.no_grad()
-    def init_loc(self, query_coarse_feature_map, images, fovx, fovy):
+    def initial_loc(self, query_coarse_feature_map, images, fovx, fovy):
         query = images[0].unsqueeze(0)
         Hf, Wf = query.shape[-2:]
         K = get_intrinsic(fovx, fovy, Wf, Hf)
@@ -231,7 +231,7 @@ class SplatHLoc:
         faiss_index.add(database_features)
         del database_features
 
-        distances, predictions = faiss_index.search(query_feature, config["init"]["topk"])
+        distances, predictions = faiss_index.search(query_feature, config["initial"]["topk"])
         predictions = predictions[0]
 
         idx_img = -1
@@ -244,7 +244,7 @@ class SplatHLoc:
             "depth": []
         }
 
-        for i in range(0, len(predictions), config["init"]["interval"]):
+        for i in range(0, len(predictions), config["initial"]["interval"]):
             prediction = predictions[i]
             pose_w2c = self.train_poses[prediction]
             idx_img += 1
@@ -258,7 +258,7 @@ class SplatHLoc:
                 Hf,
                 rgb_only=True,
                 render_mode="RGB+ED",
-                norm_feat_bf_render=self.config["dense"]["norm_before_render"],
+                norm_feat_bf_render=self.config["refined"]["norm_before_render"],
                 rasterize_mode="antialiased",
             )
             images.append(render_pkg["render"])
@@ -300,30 +300,30 @@ class SplatHLoc:
                 query_p2d + 0.5,
                 p3d,
                 K,
-                self.config["dense"]["solver"],
-                self.config["dense"]["reprojection_error"],
-                self.config["dense"]["confidence"],
-                self.config["dense"]["max_iterations"],
-                self.config["dense"]["min_iterations"],
+                self.config["refined"]["solver"],
+                self.config["refined"]["reprojection_error"],
+                self.config["refined"]["confidence"],
+                self.config["refined"]["max_iterations"],
+                self.config["refined"]["min_iterations"],
             )
 
             if inliers.shape[0] > num_inliers:
                 num_inliers = inliers.shape[0]
                 best_img_id = idx_img
 
-            if num_inliers > config["init"]["iniler_threshold_1"]:
+            if num_inliers > config["initial"]["iniler_threshold_1"]:
                 break
 
         pose_init =data["pose_w2c"][best_img_id]
 
-        if num_inliers < config["init"]["iniler_threshold_2"]:
-            num_perturbed_pose = config["init"]["num_perturbed"]
+        if num_inliers < config["initial"]["iniler_threshold_2"]:
+            num_perturbed_pose = config["initial"]["num_perturbed"]
             base_pose = pose_init.copy()
             perturbed_poses = []
             vpr_features = np.empty((num_perturbed_pose, self.features_dim), dtype="float32")
             for i in range(num_perturbed_pose):
-                pose_virtual = add_random_transform(base_pose, rot_deg_range=config["init"]["rot_deg"], \
-                                                    trans_range=config["init"]["trans"])
+                pose_virtual = add_random_transform(base_pose, rot_deg_range=config["initial"]["rot_deg"], \
+                                                    trans_range=config["initial"]["trans"])
                 render_pkg = render_from_pose_gsplat(
                     self.gaussians,
                     torch.tensor(pose_virtual, dtype=torch.float32, device="cuda"),
@@ -333,7 +333,7 @@ class SplatHLoc:
                     320,
                     rgb_only=True,
                     render_mode="RGB",
-                    norm_feat_bf_render=self.config["dense"]["norm_before_render"],
+                    norm_feat_bf_render=self.config["refined"]["norm_before_render"],
                     rasterize_mode="antialiased",
                 )
                 render = render_pkg["render"].unsqueeze(0)
@@ -360,7 +360,7 @@ class SplatHLoc:
                     Hf,
                     rgb_only=True,
                     render_mode="RGB+ED",
-                    norm_feat_bf_render=self.config["dense"]["norm_before_render"],
+                    norm_feat_bf_render=self.config["refined"]["norm_before_render"],
                     rasterize_mode="antialiased",
                 )
 
@@ -397,11 +397,11 @@ class SplatHLoc:
                     query_p2d + 0.5,
                     p3d,
                     K,
-                    self.config["dense"]["solver"],
-                    self.config["dense"]["reprojection_error"],
-                    self.config["dense"]["confidence"],
-                    self.config["dense"]["max_iterations"],
-                    self.config["dense"]["min_iterations"],
+                    self.config["refined"]["solver"],
+                    self.config["refined"]["reprojection_error"],
+                    self.config["refined"]["confidence"],
+                    self.config["refined"]["max_iterations"],
+                    self.config["refined"]["min_iterations"],
                 )
 
                 if inliers.shape[0] > num_inliers:
@@ -420,7 +420,7 @@ class SplatHLoc:
             Wf,
             Hf,
             render_mode="RGB+ED",
-            norm_feat_bf_render=self.config["dense"]["norm_before_render"],
+            norm_feat_bf_render=self.config["refined"]["norm_before_render"],
             rasterize_mode="antialiased",
         )
         
@@ -444,11 +444,11 @@ class SplatHLoc:
         )  # 1, N, M
 
         coarse_corr_matrix = dual_softmax(
-            coarse_corr_matrix, temp=self.config["dense"]["coarse_dual_softmax_temp"]
+            coarse_corr_matrix, temp=self.config["refined"]["coarse_dual_softmax_temp"]
         )
 
         c_b_ids, c_i_ids, c_j_ids = mnn_match(
-            coarse_corr_matrix, thr=self.config["dense"]["coarse_threshold"]
+            coarse_corr_matrix, thr=self.config["refined"]["coarse_threshold"]
         )
 
         if c_i_ids.dim() == 0:
@@ -514,11 +514,11 @@ class SplatHLoc:
             query_p2d + 0.5,
             p3d,
             K,
-            self.config["dense"]["solver"],
-            self.config["dense"]["reprojection_error"],
-            self.config["dense"]["confidence"],
-            self.config["dense"]["max_iterations"],
-            self.config["dense"]["min_iterations"],
+            self.config["refined"]["solver"],
+            self.config["refined"]["reprojection_error"],
+            self.config["refined"]["confidence"],
+            self.config["refined"]["max_iterations"],
+            self.config["refined"]["min_iterations"],
         )
 
         return {
@@ -527,7 +527,7 @@ class SplatHLoc:
         }
 
     @torch.no_grad()
-    def loc_dense(self, query, coarse_query_feature_map, pose_w2c, fovx, fovy):
+    def refined_loc(self, query, coarse_query_feature_map, pose_w2c, fovx, fovy):
         """
         coarse_feature_map: torch.Tensor, shape (C, H, W)
         fine_feature_map: torch.Tensor, shape (C, H, W)
@@ -544,7 +544,7 @@ class SplatHLoc:
             Wc * 8,
             Hc * 8,
             render_mode="RGB+ED",
-            norm_feat_bf_render=self.config["dense"]["norm_before_render"],
+            norm_feat_bf_render=self.config["refined"]["norm_before_render"],
             rasterize_mode="antialiased",
         )
 
@@ -573,11 +573,11 @@ class SplatHLoc:
         )  # 1, N, M
 
         coarse_corr_matrix = dual_softmax(
-            coarse_corr_matrix, temp=self.config["dense"]["coarse_dual_softmax_temp"]
+            coarse_corr_matrix, temp=self.config["refined"]["coarse_dual_softmax_temp"]
         )
 
         c_b_ids, c_i_ids, c_j_ids = mnn_match(
-            coarse_corr_matrix, thr=self.config["dense"]["coarse_threshold"]
+            coarse_corr_matrix, thr=self.config["refined"]["coarse_threshold"]
         )
 
         if c_i_ids.dim() == 0:
@@ -642,11 +642,11 @@ class SplatHLoc:
             query_p2d + 0.5,
             p3d,
             K,
-            self.config["dense"]["solver"],
-            self.config["dense"]["reprojection_error"],
-            self.config["dense"]["confidence"],
-            self.config["dense"]["max_iterations"],
-            self.config["dense"]["min_iterations"],
+            self.config["refined"]["solver"],
+            self.config["refined"]["reprojection_error"],
+            self.config["refined"]["confidence"],
+            self.config["refined"]["max_iterations"],
+            self.config["refined"]["min_iterations"],
         )
 
         if inliers.shape[0] < 10:
@@ -719,7 +719,7 @@ if __name__ == "__main__":
     # Set up config
     config = yaml.load(open(args.cfg), Loader=yaml.FullLoader)
         
-    config["dense"]["norm_before_render"] = dataset.norm_before_render
+    config["refined"]["norm_before_render"] = dataset.norm_before_render
     config["feature_type"] = dataset.feature_type
     config["longest_edge"] = dataset.longest_edge
     config["model_path"] = dataset.model_path
@@ -736,12 +736,12 @@ if __name__ == "__main__":
     splathloc = SplatHLoc(gaussians, config, match_config, train_cameras)
 
     results = []
-    sparse_aes = []
-    sparse_tes = []
-    sparse_inliers = []
-    dense_aes = []
-    dense_tes = []
-    dense_inliers = []
+    initial_aes = []
+    initial_tes = []
+    initial_inliers = []
+    refined_aes = []
+    refined_tes = []
+    refined_inliers = []
     get_feature_times = []
     init_loc_times = []
     refine_loc_times = []
@@ -758,64 +758,64 @@ if __name__ == "__main__":
         loc_res = splathloc.localize(query_image, fovx, fovy)
 
         # evaluation
-        sparse_ae, sparse_te = cal_pose_error(loc_res["sparse"]["pose_w2c"], gt_w2c)
-        sparse_aes.append(sparse_ae)
-        sparse_tes.append(sparse_te)
-        sparse_inliers.append(loc_res["sparse"]["inliers"])
+        initial_ae, initial_te = cal_pose_error(loc_res["initial"]["pose_w2c"], gt_w2c)
+        initial_aes.append(initial_ae)
+        initial_tes.append(initial_te)
+        initial_inliers.append(loc_res["initial"]["inliers"])
         loc_res["image_name"] = camera_info.image_name
-        loc_res["sparse_AE"] = sparse_ae
-        loc_res["sparse_TE"] = sparse_te
+        loc_res["initial_AE"] = initial_ae
+        loc_res["initial_TE"] = initial_te
 
-        dense_ae, dense_te = cal_pose_error(loc_res["dense"][-1]["pose_w2c"], gt_w2c) # degree, cm
-        dense_aes.append(dense_ae)
-        dense_tes.append(dense_te)
-        dense_inliers.append(loc_res["dense"][-1]["inliers"])
-        print(f"AE: {dense_ae:.3f}deg, TE: {dense_te:.3f}cm, inliers: {loc_res['dense'][-1]['inliers']}")
+        refined_ae, refined_te = cal_pose_error(loc_res["refined"][-1]["pose_w2c"], gt_w2c) # degree, cm
+        refined_aes.append(refined_ae)
+        refined_tes.append(refined_te)
+        refined_inliers.append(loc_res["refined"][-1]["inliers"])
+        print(f"AE: {refined_ae:.3f}deg, TE: {refined_te:.3f}cm, inliers: {loc_res['refined'][-1]['inliers']}")
 
         loc_res["gt_pose_w2c"] = gt_w2c.tolist()
-        loc_res["dense_AE"] = dense_ae
-        loc_res["dense_TE"] = dense_te
+        loc_res["refined_AE"] = refined_ae
+        loc_res["refined_TE"] = refined_te
 
         get_feature_times.append(loc_res["timing"]["get_feature"])
-        init_loc_times.append(loc_res["timing"]["init_loc"])
-        refine_loc_times.append(loc_res["timing"]["refine_loc"])
+        init_loc_times.append(loc_res["timing"]["initial_loc"])
+        refine_loc_times.append(loc_res["timing"]["refined_loc"])
         total_times.append(loc_res["timing"]["total"])
 
         results.append(loc_res)
 
     # get summary
-    sparse_aes = np.array(sparse_aes)
-    sparse_tes = np.array(sparse_tes)
-    dense_aes = np.array(dense_aes)
-    dense_tes = np.array(dense_tes)
+    initial_aes = np.array(initial_aes)
+    initial_tes = np.array(initial_tes)
+    refined_aes = np.array(refined_aes)
+    refined_tes = np.array(refined_tes)
 
     results_summary = {
         "model_path": dataset.model_path,
-        "sparse": {
-            "median_ae": np.median(sparse_aes),
-            "median_te": np.median(sparse_tes),
-            "recall_5m_10d": ((sparse_aes <= 10) & (sparse_tes <= 500)).sum()
-            / len(sparse_aes),
-            "recall_2m_5d": ((sparse_aes <= 5) & (sparse_tes <= 200)).sum()
-            / len(sparse_aes),
-            "recall_5cm_5d": ((sparse_aes <= 5) & (sparse_tes <= 5)).sum()
-            / len(sparse_aes),
-            "recall_2cm_2d": ((sparse_aes <= 2) & (sparse_tes <= 2)).sum()
-            / len(sparse_aes),
-            "avg_inliers": np.array(sparse_inliers).mean(),
+        "initial": {
+            "median_ae": np.median(initial_aes),
+            "median_te": np.median(initial_tes),
+            "recall_5m_10d": ((initial_aes <= 10) & (initial_tes <= 500)).sum()
+            / len(initial_aes),
+            "recall_2m_5d": ((initial_aes <= 5) & (initial_tes <= 200)).sum()
+            / len(initial_aes),
+            "recall_5cm_5d": ((initial_aes <= 5) & (initial_tes <= 5)).sum()
+            / len(initial_aes),
+            "recall_2cm_2d": ((initial_aes <= 2) & (initial_tes <= 2)).sum()
+            / len(initial_aes),
+            "avg_inliers": np.array(initial_inliers).mean(),
         },
-        "dense": {
-            "median_ae": np.median(dense_aes),
-            "median_te": np.median(dense_tes),
-            "recall_5m_10d": ((dense_aes <= 10) & (dense_tes <= 500)).sum()
-            / len(dense_aes),
-            "recall_2m_5d": ((dense_aes <= 5) & (dense_tes <= 200)).sum()
-            / len(dense_aes),
-            "recall_5cm_5d": ((dense_aes <= 5) & (dense_tes <= 5)).sum()
-            / len(dense_aes),
-            "recall_2cm_2d": ((dense_aes <= 2) & (dense_tes <= 2)).sum()
-            / len(dense_aes),
-            "avg_inliers": np.array(dense_inliers).mean(),
+        "refined": {
+            "median_ae": np.median(refined_aes),
+            "median_te": np.median(refined_tes),
+            "recall_5m_10d": ((refined_aes <= 10) & (refined_tes <= 500)).sum()
+            / len(refined_aes),
+            "recall_2m_5d": ((refined_aes <= 5) & (refined_tes <= 200)).sum()
+            / len(refined_aes),
+            "recall_5cm_5d": ((refined_aes <= 5) & (refined_tes <= 5)).sum()
+            / len(refined_aes),
+            "recall_2cm_2d": ((refined_aes <= 2) & (refined_tes <= 2)).sum()
+            / len(refined_aes),
+            "avg_inliers": np.array(refined_inliers).mean(),
         },
         "timing": {
             "mean_get_feature": np.mean(get_feature_times),
@@ -833,9 +833,9 @@ if __name__ == "__main__":
     )
 
     for item in results:
-        item["sparse"]["pose_w2c"] = item["sparse"]["pose_w2c"].tolist()
-        for dense_item in item["dense"]:
-            dense_item["pose_w2c"] = dense_item["pose_w2c"].tolist()
+        item["initial"]["pose_w2c"] = item["initial"]["pose_w2c"].tolist()
+        for refined_item in item["refined"]:
+            refined_item["pose_w2c"] = refined_item["pose_w2c"].tolist()
     json.dump(results, open(os.path.join(output_path, "results.json"), "w"), indent=4)
 
     print("Result are saved in", output_path)

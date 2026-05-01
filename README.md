@@ -1,8 +1,6 @@
 # SplatHLoc
 Official code for CVPR 2026 paper "Hierarchical Visual Relocalization with Nearest View Synthesis from Feature Gaussian Splatting"
 
-# 🚧 Under Construction
-
 ## 🛠️ Environment Setup
 ```
 conda create -n splathloc python=3.8 -y
@@ -40,6 +38,30 @@ for scene in chess fire heads office pumpkin redkitchen stairs; \
 do mkdir -p $dataset/$scene/sparse && cp -r $dataset/7scenes_reference_models/$scene/sfm_gt $dataset/$scene/sparse/0 ; done
 ```
 
+#### 12-Scenes Dataset
+
+1. Download images following HLoc.
+
+```bash
+export dataset=datasets/12scenes
+for scene in apt1 apt2 office1 office2; \
+do wget https://graphics.stanford.edu/projects/reloc/data/$scene.zip -P $dataset \
+&& unzip $dataset/$scene.zip -d $dataset && unzip $dataset/$scene/'*.zip' -d $dataset/$scene; done
+```
+
+2. Download full reconstructions
+   from [visloc_pseudo_gt_limitations](https://github.com/tsattler/visloc_pseudo_gt_limitations/tree/main?tab=readme-ov-file#full-reconstructions):
+
+```bash
+pip install gdown
+gdown 1u5du-cYp3J3-BfybZVkhvgv0PPua8tud -O $dataset/12scenes_reference_models.zip
+unzip $dataset/12scenes_reference_models.zip -d $dataset
+# move sfm_gt to each dataset
+for scene in apt1/kitchen apt1/living apt2/bed apt2/kitchen apt2/living apt2/luke office1/gates362 office1/gates381 office1/lounge office1/manolis office2/5a office2/5b; 
+do mkdir -p "$dataset/$scene/data/sparse" && cp -r $dataset/12scenes_reference_models/$scene/sfm_gt $dataset/$scene/sparse/0/ ;
+done
+```
+
 #### Cambridge Landmarks Dataset
 
 1. Download images from PoseNet's project page:
@@ -75,18 +97,35 @@ bash scripts/dataset_preprocess.sh
 <p align="right"><a href="#readme-top"><img src=https://img.shields.io/badge/back%20to%20top-red?style=flat
 ></a></p>
 
+## 🚀 Training
+
+```bash
+# For 7-Scenes:
+bash scripts/train_7s.sh
+# For 12-Scenes:
+bash scripts/train_12s.sh
+# For Cambridge:
+bash scripts/train_cam.sh
+```
+
+<p align="right"><a href="#readme-top"><img src=https://img.shields.io/badge/back%20to%20top-red?style=flat
+></a></p>
+
+
 ## 📈 Evaluation
 
-- Download and extract the pretrained Feature Guassian Map for [7-Scenes](https://drive.google.com/file/d/1tLvRUNylbMZ1oUQooHvUnKwf4YnBnfdj/view) and [Cambridge](https://drive.google.com/file/d/1AEAFR0WeD6vBanQsxvgRQFrVO6g27GBC/view) datasets into the `map/` folder.
+- Download and extract the pretrained Feature Guassian Map for [7-Scenes](https://drive.google.com/file/d/1tLvRUNylbMZ1oUQooHvUnKwf4YnBnfdj/view?usp=sharing), [12-Scenes](https://drive.google.com/file/d/1mJXtgPAVSXjFNVznI6O8UzsdavFLmFRi/view?usp=sharing) and [Cambridge](https://drive.google.com/file/d/1AEAFR0WeD6vBanQsxvgRQFrVO6g27GBC/view?usp=sharing) datasets into the `map/` folder.
 
 - Download the pretrained MixVPR model from [official link](https://drive.google.com/file/d/1vuz3PvnR7vxnDDLQrdHJaOA04SQrtk5L/view), and place it under `vpr_model/` folder.
 
 Reproduce the experimental results.
-```
-For 7-Scenes:
-bash scripts test_7s.sh
-For Cambridge:
-bash scripts test_cam.sh
+```bash
+# For 7-Scenes:
+bash scripts/test_7s.sh
+# For 12-Scenes:
+bash scripts/test_12s.sh
+# For Cambridge:
+bash scripts/test_cam.sh
 ```
 <p align="right"><a href="#readme-top"><img src=https://img.shields.io/badge/back%20to%20top-red?style=flat
 ></a></p>
@@ -107,4 +146,4 @@ If you find SplatHLoc is useful in your research, please consider giving us a st
 ></a></p>
 
 ## 🙏 Acknowledgement
-Our work is primarily based on the following codebases: [STDLoc](https://github.com/zju3dv/STDLoc), [Feature 3DGS](https://github.com/ShijieZhou-UCLA/feature-3dgs), [MixVPR](https://github.com/amaralibey/MixVPR),  [JamMa](https://github.com/leoluxxx/JamMa). We are sincerely grateful for their works.
+Our work is primarily based on the following codebases: [HLoc](https://github.com/cvg/Hierarchical-Localization), [STDLoc](https://github.com/zju3dv/STDLoc), [Feature 3DGS](https://github.com/ShijieZhou-UCLA/feature-3dgs), [MixVPR](https://github.com/amaralibey/MixVPR),  [JamMa](https://github.com/leoluxxx/JamMa). We are sincerely grateful for their works.
